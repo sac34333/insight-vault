@@ -1,3 +1,11 @@
+"""
+InsightVault - Main Agent Orchestrator
+======================================
+This script initializes the Claude SDK client and manages:
+1. Clipboard monitoring (background task)
+2. User command processing (foreground task)
+"""
+
 import os
 import asyncio
 import pyperclip
@@ -6,25 +14,28 @@ from dotenv import load_dotenv
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock, ToolUseBlock
 
 # --- PATH CONFIGURATION ---
-# Tell Python to look inside the hidden skill folder for your logic
+# Add the skill folder to Python's path so we can import helper functions
 skill_path = os.path.join(".claude", "skills", "capture-insight")
 if skill_path not in sys.path:
     sys.path.append(skill_path)
 
-# Import the helper from your local client
+# Import the list_topics helper (used for /list command)
 try:
     from supabase_client import list_topics
 except ImportError:
-    def list_topics(): return [] # Fallback if file not found
+    # Fallback if the supabase_client module is not found
+    def list_topics(): return []
 
+# Load environment variables from .env file
 load_dotenv()
 
 # --- GLOBAL STATE ---
-current_topic = "General Research"
-seen_messages = set() # To prevent double-printing "Vault Updated"
+current_topic = "General Research"  # Default topic for new captures
+seen_messages = set()               # Tracks printed messages to avoid duplicates
+
 
 def print_menu():
-    """Prints the status and instructions clearly to the terminal."""
+    """Displays the current topic and available commands to the user."""
     global current_topic
     print("\n" + "="*50)
     print(f"STATUS: LOCKED TOPIC -> {current_topic}")
@@ -35,65 +46,92 @@ def print_menu():
     print("-> [I am done]     Publish current topic to Confluence.")
     print("="*50 + "\n")
 
+
 async def handle_agent_responses(client):
-    """Processes messages, avoids duplicates, and shows Confluence links."""
+    """
+    Processes and displays Claude's responses.
+    - Filters duplicate "Vault Updated" messages
+    - Highlights Confluence URLs with success formatting
+    """
     global seen_messages
+    
     async for message in client.receive_response():
         if isinstance(message, AssistantMessage):
             for block in message.content:
+                # Log tool executions for transparency
                 if isinstance(block, ToolUseBlock):
-                    # Only print execution logs for background transparency
                     print(f"[System]: Executing {block.name}...")
                 
                 elif isinstance(block, TextBlock):
                     text = block.text.strip()
-                    if not text: continue
+                    if not text:
+                        continue
 
-                    # FIX: Logic to prevent double "Vault Updated" and show Confluence URLs
+                    # Prevent duplicate "Vault Updated" messages
                     if "Vault Updated" in text:
                         if text not in seen_messages:
                             print(f"Agent: {text}")
                             seen_messages.add(text)
+                    # Highlight Confluence publish success
                     elif "http" in text or "Published" in text or "atlassian.net" in text:
                         print(f"\n🚀 SUCCESS: {text}")
                     else:
                         print(f"Agent: {text}")
     
-    # Reset seen messages for the next interaction
+    # Clear seen messages for the next interaction cycle
     seen_messages.clear()
     print_menu()
 
+
 async def clipboard_listener(client):
-    """Background task: Watches clipboard and applies Topic Lock."""
+    """
+    Background task: Monitors clipboard for new content.
+    When new text is detected, sends it to Claude with the current topic.
+    """
     global current_topic
+    
+    # Store initial clipboard content to detect changes
     last_clip = pyperclip.paste().strip()
     
     while True:
         try:
             current_clip = pyperclip.paste().strip()
+            
+            # Only process if clipboard has new content
             if current_clip and current_clip != last_clip:
                 last_clip = current_clip
+                # Show preview (first 60 chars)
                 print(f"\n[Raw Capture]: {current_clip[:60]}...")
                 
-                # Prepend the Topic Lock to the capture query
+                # Send to Claude with topic context (Topic Lock pattern)
                 query_text = f"TOPIC: {current_topic} | Raw capture: '{current_clip}'. Save as-is."
                 await client.query(query_text)
                 asyncio.create_task(handle_agent_responses(client))
+            
+            # Poll every 500ms
             await asyncio.sleep(0.5)
         except Exception:
+            # On error, wait a bit longer before retrying
             await asyncio.sleep(1)
 
+
 async def user_input_loop(client):
-    """Foreground task: Handles commands and topic changes."""
+    """
+    Foreground task: Handles user commands from the terminal.
+    Supports: /list, /topic, I am done, and general queries.
+    """
     global current_topic
+    
     while True:
         try:
+            # Read user input in a non-blocking way
             user_text = await asyncio.to_thread(input, "You: ")
             
+            # Skip empty input
             if not user_text.strip():
                 continue
 
-            # 1. TOPIC LISTER
+            # --- COMMAND: List all topics ---
             if user_text.strip() == "/list":
                 topics = list_topics()
                 if topics:
@@ -106,24 +144,33 @@ async def user_input_loop(client):
                 print_menu()
                 continue
 
-            # 2. TOPIC SWITCHER (Flexible: supports '/topic ', '/ ', or just '/')
+            # --- COMMAND: Switch topic ---
+            # Supports: /topic <name>, / <name>, or /<name>
             if user_text.startswith("/topic ") or user_text.startswith("/ ") or user_text.startswith("/"):
-                # Extract topic name by removing common command prefixes
+                # Handle edge case: "/list" should not trigger topic switch
+                if user_text.strip() == "/list":
+                    continue
+                    
+                # Extract topic name by removing command prefixes
                 new_topic = user_text.replace("/topic ", "").replace("/ ", "")
                 if new_topic.startswith("/"):
                     new_topic = new_topic[1:]
                 
-                current_topic = new_topic.strip()
-                print(f"\n[System]: Topic updated and locked to: {current_topic}")
+                # Avoid setting empty topic
+                if new_topic.strip():
+                    current_topic = new_topic.strip()
+                    print(f"\n[System]: Topic updated and locked to: {current_topic}")
+                else:
+                    print("\n[System]: Please provide a topic name.")
                 print_menu()
                 continue
 
-            # 3. PUBLISHING LOGIC
+            # --- COMMAND: Publish to Confluence ---
             if "I am done" in user_text or "Publish" in user_text:
                 publish_query = f"I am done. Publish all research notes for the topic '{current_topic}' to Confluence."
                 await client.query(publish_query)
             else:
-                # Standard questions or instructions
+                # Pass any other text as a general query to Claude
                 await client.query(user_text)
             
             await handle_agent_responses(client)
@@ -131,10 +178,15 @@ async def user_input_loop(client):
         except Exception as e:
             print(f"Input Error: {e}")
 
+
 async def main():
-    # GIT-READY: Load path from .env or fallback to 'claude' for cross-platform support
+    """
+    Entry point: Initializes the Claude SDK client and starts both tasks.
+    """
+    # Load CLI path from environment (supports Windows/Mac/Linux)
     env_cli_path = os.getenv("CLAUDE_CLI_PATH", "claude")
     
+    # Configure the Claude Agent SDK
     options = ClaudeAgentOptions(
         model="claude-sonnet-4-5",
         cli_path=env_cli_path,
@@ -146,11 +198,13 @@ async def main():
     print("\n(venv) InsightVault: Power Research Mode Active.")
     print_menu()
 
+    # Start the async client and run both tasks concurrently
     async with ClaudeSDKClient(options=options) as client:
         await asyncio.gather(
-            clipboard_listener(client),
-            user_input_loop(client)
+            clipboard_listener(client),  # Background: monitors clipboard
+            user_input_loop(client)       # Foreground: handles commands
         )
+
 
 if __name__ == "__main__":
     try:

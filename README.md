@@ -1,90 +1,226 @@
-🔒 InsightVault: Create notetaking application using Claude Agent Skills and SDK
+# 🔒 InsightVault
 
 InsightVault turns your clipboard into a structured, AI-powered database of your personal notes. It uses the Claude Agent SDK to listen for text you copy while browsing or reading and automatically tags, stores, and organizes it into a private vault. When you're done, it publishes a formatted report to Confluence with a single command. It is a functional demonstration of how to build real-world tools using the Claude Agent SDK. It showcases a "headless" agentic workflow where Claude is taught custom skills to bridge the gap between a local environment and cloud services like Supabase and Confluence.
 
-🧠 Claude Agent SDK & Skills: How it Works
+---
 
-This project is built directly on the principles of the Claude Agent SDK and Claude Skills.
+### 💡 Core Philosophy
 
-    - Claude Agent SDK: Acts as the orchestration layer. It provides the ClaudeSDKClient which allows our Python application to communicate with Claude, manage sessions, and handle tool execution loops.
+| Design Choice | Why It Matters |
+|---------------|----------------|
+| **"Preservation" priority** | Raw data integrity > AI polish. When learning, you want the original — not a paraphrase. |
+| **"No Summarization"** | Keeps Claude token usage minimal — no analysis overhead. Capture first, synthesize later. |
+| **"Ultra-Low Tokens"** | Cost-efficient for a background tool. Move to action |
 
-    - Claude Skills: These are the modular units of capability. Following the official SDK documentation, a Skill consists of a Definition (written in natural language within a SKILL.md file) and an Implementation (executable code like Python or Bash). By registering these skills, we "teach" Claude how to perform specific tasks without hard-coded logic.
+> *We don't need to summarize everything every time. We need to preserve while reading and learning.*
 
-📂 Project Architecture (The SDK Logic)
+---
 
-The power of the Claude Agent SDK lies in its simplicity. Instead of building complex backends, we define Skills that Claude uses to interact with the world.
+## 🧠 How It Works
 
-    - run_agent.py: The entry point. A lightweight script that initializes the ClaudeSDKClient and manages the OS-level clipboard listener.
+```mermaid
+sequenceDiagram
+    participant User
+    participant Clipboard
+    participant InsightVault
+    participant Claude
+    participant Supabase
+    participant Confluence
 
-    - .claude/skills/capture-insight/: A self-contained Claude Skill directory, structured according to SDK standards.
+    User->>Clipboard: Ctrl+C on any text
+    Clipboard->>InsightVault: Detects change
+    InsightVault->>Claude: "Save this under topic X"
+    Claude->>Supabase: INSERT into reading_notes
+    Supabase-->>User: "Vault Updated 🔒"
+    
+    User->>InsightVault: "I am done"
+    InsightVault->>Claude: "Publish topic X"
+    Claude->>Supabase: SELECT notes for topic X
+    Claude->>Confluence: Create/Update page
+    Confluence-->>User: 🚀 Page URL
+```
 
-    - SKILL.md: The Skill Definition. This follows the Claude Skills structure by providing natural language instructions that map user intent to specific bash commands. It defines what the skill does and when Claude should use it.
+### The Workflow
 
-    - supabase_client.py: A Skill Implementation script. This is the actual "tool" or resources Claude calls to perform database operations.
+1. **Lock a Topic**: Tell the vault what you're researching → `/topic Agentic AI`
+2. **Browse & Copy**: Highlight text anywhere and press `Ctrl+C`
+3. **Auto-Capture**: Claude saves it to Supabase in the background
+4. **Publish**: Type `I am done` → Get a Confluence page with all your notes
 
-    - confluence_client.py: A Skill Implementation script. This tool allows the agent to interact with the Confluence API for final publishing.
+---
 
+## 📂 Architecture
 
-The Workflow
+```
+insight-vault/
+├── run_agent.py                          # SDK orchestrator + clipboard listener
+├── .claude/
+│   └── skills/
+│       └── capture-insight/
+│           ├── SKILL.md                  # Natural language skill definition
+│           ├── supabase_client.py        # Database operations tool
+│           └── confluence_client.py      # Publishing tool
+├── requirements.txt
+└── .env                                  # Your credentials (not in repo)
+```
 
-This tool is designed for high-speed Note taking for various purposes. You don't need to switch between tabs or manually paste into documents.
+### Component Breakdown
 
-    1. Lock a Topic: Tell the vault what you are reading or researching (e.g., /topic Agentic AI).
+| Component | Lines | Purpose |
+|-----------|-------|---------|
+| `run_agent.py` | 159 | Async clipboard monitoring + user commands |
+| `SKILL.md` | 31 | **The brain** — teaches Claude when/how to act |
+| `supabase_client.py` | 68 | Insert notes, list topics |
+| `confluence_client.py` | 72 | Create/update research pages |
 
-    2. Browse & Copy: Go to any website. Highlight text and press Ctrl+C.
+---
 
-    3. Auto-Capture: The Agent detects the copy in the background and saves it to your Supabase Database vault instantly.
+## 🎯 The Skill Definition (The Magic)
 
-    4. Publish: Type I am done to generate a formatted Confluence research page automatically.
+The `SKILL.md` file is where Claude learns behavior:
 
-🛠️ Setup Guide (5 Minutes)
+```markdown
+## Minimal Processing
+* **No Summarization**: Do not summarize or alter the user's text. 
+* **Topic Assignment**: Use the current session topic. Default to "General Research".
 
-    1. Prerequisites
+## Direct Storage (Supabase)
+* **Immediate Action**: Call `insert_row` into the `reading_notes` table immediately.
+* **Confirmation**: Print only: "Vault Updated 🔒 [{topic}]".
 
-    - Python 3.10+ installed.
+## Raw Export (Confluence)
+* **Trigger**: Activate only on "I am done" or "Publish research".
+* **Aggregation**: Query notes matching the specific topic.
+* **Publish**: Use `create_page` to post to Confluence.
 
-    - Node.js (LTS) installed (required for the Claude Agent engine).
+## Constraints
+* **Ultra-Low Tokens**: Move directly to tool execution.
+* **Preservation**: The integrity of the original snippet is the priority.
+```
 
-    - Claude Code CLI installed (npm install -g @anthropic-ai/claude-code).
+---
 
-2. Installation
+## 🛠️ Setup Guide (5 Minutes)
 
-# Clone the repository
-git clone [https://github.com/your-username/insight-vault.git](https://github.com/your-username/insight-vault.git)
+### Prerequisites
+
+- Python 3.10+
+- Node.js (LTS)
+- Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
+- A Supabase project
+- A Confluence space (Atlassian Cloud)
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/your-username/insight-vault.git
 cd insight-vault
 
-# Set up the virtual environment
+# Create virtual environment
 python -m venv venv
 
-# Activate the environment
+# Activate it
 # Windows:
 .\venv\Scripts\activate
-# Mac / Linux:
+# Mac/Linux:
 source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
+```
 
+### 2. Create Supabase Table
 
-3. Environment Configuration
+Run this SQL in your Supabase SQL Editor:
 
+```sql
+CREATE TABLE reading_notes (
+  id SERIAL PRIMARY KEY,
+  content TEXT NOT NULL,
+  topic VARCHAR(255) DEFAULT 'General Research',
+  insight_tag VARCHAR(255) DEFAULT 'Raw Note',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+### 3. Configure Environment
+
+Create a `.env` file in the root folder:
+
+```env
 # --- DATABASE (Supabase) ---
-SUPABASE_URL=[https://your-project.supabase.co](https://your-project.supabase.co)
-SUPABASE_KEY=your-anon-key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-# --- DOCUMENTATION (Confluence) ---
-CONFLUENCE_URL=[https://your-domain.atlassian.net](https://your-domain.atlassian.net)
-CONFLUENCE_USER=your-email
-CONFLUENCE_API_TOKEN=your-atlassian-api-token
+# --- DOCUMENTATION (Confluence/Atlassian) ---
+ATLASSIAN_SITE_NAME=your-site-name
+ATLASSIAN_USER_EMAIL=your-email@example.com
+ATLASSIAN_API_TOKEN=your-atlassian-api-token
 
 # --- AGENT CONFIGURATION ---
-# Windows: Provide the absolute path to your claude.cmd file
+# Windows: Full path to claude.cmd
 CLAUDE_CLI_PATH=C:\Users\YOUR_USERNAME\AppData\Roaming\npm\claude.cmd
-
-# Mac / Linux: Usually 'claude' if in your PATH, or use the full path
+# Mac/Linux: Just use 'claude'
 # CLAUDE_CLI_PATH=claude
+```
 
+### 4. Run
 
-4. Run the Tool
-
+```bash
 python run_agent.py
+```
+
+---
+
+## 📖 Commands
+
+| Command | Action |
+|---------|--------|
+| `/topic <name>` or `/ <name>` | Switch research topic |
+| `/list` | Show all topics in your vault |
+| `I am done` or `Publish` | Publish current topic to Confluence |
+| `Ctrl+C` (on any text) | Auto-capture to current topic |
+
+---
+
+## 🔑 Key Design Patterns Demonstrated
+
+### 1. Claude as Orchestrator
+```python
+# No if/else routing logic — Claude decides based on SKILL.md
+await client.query(query_text)
+```
+
+### 2. Async Dual-Loop Architecture
+```python
+await asyncio.gather(
+    clipboard_listener(client),  # Background: watches clipboard
+    user_input_loop(client)       # Foreground: handles commands
+)
+```
+
+### 3. Topic Lock Pattern
+```python
+# Prepend context to every query — Claude categorizes automatically
+query_text = f"TOPIC: {current_topic} | Raw capture: '{clip}'. Save as-is."
+```
+
+### 4. Tool Output Contract
+```python
+# Clean JSON for Claude to parse
+print(json.dumps({"success": True, "data": result.data}))
+# Errors to stderr
+print(json.dumps({"success": False, "error": str(e)}), file=sys.stderr)
+```
+
+---
+
+## 🤝 Contributions Welcomed
+
+Contributions are welcome! Feel free to:
+- Add new skills (e.g., export to other tools and platforms)
+- Improve error handling
+- Add a Streamlit UI (dependency already included)
+
+---
+
