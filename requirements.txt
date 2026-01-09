@@ -1,0 +1,6 @@
+claude-agent-sdk
+pyperclip
+python-dotenv
+supabase
+atlassian-python-api
+streamlit
