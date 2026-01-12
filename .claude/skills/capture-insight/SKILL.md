@@ -20,7 +20,6 @@ description: Captures any text snippet, highlight, or note and saves it exactly 
 * **Confirmation**: Print only: "Vault Updated 🔒 [{topic}]".
 
 ## 3. Raw Export (Confluence)
-## 3. Raw Export (Confluence)
 * **Trigger**: Activate only on "I am done" or "Publish research".
 * **Aggregation**: Query the `reading_notes` table for entries where the `topic` matches the **specific topic provided in the user's command**. Do not fetch notes for any other topics.
 * **Format**: Do not synthesize. List the snippets exactly as they were captured, separated by horizontal rules (---) and Markdown headers for dates/times if available.
