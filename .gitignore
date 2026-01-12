@@ -3,9 +3,5 @@ __pycache__/
 venv/
 .env
 
-# Claude Agent SDK
-.claude/
-! .claude/skills/
-
 # OS files
 .DS_Store
