@@ -1,6 +1,8 @@
 # 🔒 InsightVault
 
-InsightVault turns your clipboard into a structured, AI-powered database of your personal notes. It uses the Claude Agent SDK to listen for text you copy while browsing or reading and automatically tags, stores, and organizes it into a private vault. When you're done, it publishes a formatted report to Confluence with a single command. It is a functional demonstration of how to build real-world tools using the Claude Agent SDK. It showcases a "headless" agentic workflow where Claude is taught custom skills to bridge the gap between a local environment and cloud services like Supabase and Confluence.
+InsightVault is an agent that turns your clipboard into a structured, AI-powered database of your personal notes. It watches for text you copy while browsing or reading, sends it to Claude via the Agent SDK, and Claude, guided by a custom Agent Skill, stores it in Supabase. When you're done, a single command triggers Claude to publish all your notes to Confluence.
+
+This is a functional demonstration of how to build real-world tools using **Agent Skills** in the **Claude Agent SDK**. It is a "headless" agentic workflow where Claude is taught custom skills to bridge the gap between a local environment (your clipboard) and cloud services (Supabase and Confluence).
 
 ---
 
@@ -8,7 +10,7 @@ InsightVault turns your clipboard into a structured, AI-powered database of your
 
 | Design Choice | Why It Matters |
 |---------------|----------------|
-| **"Preservation" priority** | Raw data integrity > AI polish. When learning, you want the original — not a paraphrase. |
+| **"Preservation" priority** | Raw data integrity > AI summarization. Sometimes when learning, you want the original — not a summary. |
 | **"No Summarization"** | Keeps Claude token usage minimal — no analysis overhead. Capture first, synthesize later. |
 | **"Ultra-Low Tokens"** | Cost-efficient for a background tool. Move to action |
 
@@ -16,7 +18,42 @@ InsightVault turns your clipboard into a structured, AI-powered database of your
 
 ---
 
-## 🧠 How It Works
+## � Built With: Claude Agent SDK & Agent Skills
+
+This project demonstrates two key concepts from the Claude platform:
+
+### Claude Agent SDK
+The [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview) lets you run Claude as a background agent that can take actions on your system — execute scripts, read files, and call APIs.
+
+```python
+# Example: Initializing the SDK
+options = ClaudeAgentOptions(
+    model="claude-sonnet-4-5",
+    setting_sources=["project"],      # Load skills from .claude/skills/
+    allowed_tools=["Skill", "Bash"]   # Enable Skills and Bash execution
+)
+```
+
+### Agent Skills
+[Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) are modular capabilities that extend Claude. Instead of writing complex logic, you write natural language instructions in a `SKILL.md` file. Claude reads these instructions and autonomously decides when to use them.
+
+**How Skills work:**
+1. **Metadata** (always loaded) — Name and description tell Claude when to use the skill
+2. **Instructions** (loaded when triggered) — The `SKILL.md` body contains workflows and guidance
+3. **Resources** (loaded as needed) — Scripts and tools Claude can execute
+
+In InsightVault, the skill at `.claude/skills/capture-insight/SKILL.md` teaches Claude:
+- When text is copied → Save to Supabase  
+- When user says "I am done" → Publish to Confluence
+- Never summarize → Preserve the original text
+
+**Learn more:**
+- [Agent Skills Overview](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)
+- [Agent Skills in the SDK](https://platform.claude.com/docs/en/agent-sdk/skills)
+
+---
+
+## �🧠 How It Works
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +112,7 @@ insight-vault/
 
 ---
 
-## 🎯 The Skill Definition (The Magic)
+## 🎯 The SKILL.md Definition
 
 The `SKILL.md` file is where Claude learns behavior:
 
@@ -183,7 +220,7 @@ python run_agent.py
 
 ---
 
-## 🔑 Key Design Patterns Demonstrated
+## 🔑 Key Design Patterns
 
 ### 1. Claude as Orchestrator
 ```python
@@ -215,7 +252,7 @@ print(json.dumps({"success": False, "error": str(e)}), file=sys.stderr)
 
 ---
 
-## 🤝 Contributions Welcomed
+## 🤝 Contributions Are Welcome
 
 Contributions are welcome! Feel free to:
 - Add new skills (e.g., export to other tools and platforms)
